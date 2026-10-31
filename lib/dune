@@ -1,0 +1,3 @@
+(library
+ (name aur)
+ (libraries core_unix cohttp-lwt-unix tls-lwt ocolor yojson))

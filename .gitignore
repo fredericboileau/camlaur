@@ -1,0 +1,17 @@
+# dune build output, which includes packages built by dune package management
+_build/
+
+# Generated when installing executables
+*.install
+
+# Local opam switch, if you ever create one with `opam switch create .`
+_opam/
+
+# Coverage reports (bisect_ppx)
+_coverage/
+*.coverage
+
+# Editor and OS files
+.merlin
+*.swp
+.DS_Store
