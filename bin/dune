@@ -1,5 +1,6 @@
 (executable
  (public_name oaurutil)
  (name main)
- (preprocess (pps ppx_let))
+ (preprocess
+  (pps ppx_let))
  (libraries aur core core_unix core_unix.command_unix lwt lwt.unix))

@@ -1,3 +1,5 @@
+open Util
+
 let aur_location = "https://aur.archlinux.org"
 let aur_rpc_ver = 5
 let ua_header = Cohttp.Header.init_with "User-Agent" "oaur"
@@ -9,7 +11,7 @@ let search term =
     let query = Uri.with_path aururl path in
     let open Lwt.Syntax in
     let open Cohttp_lwt_unix in
-    let* _, body = Client.get ?headers:(Some ua_header) query in
+    let* _, body = Client.get ~headers:ua_header query in
     Cohttp_lwt.Body.to_string body
   in
   let display_search_results body =
@@ -47,9 +49,32 @@ let search term =
           "%s @{<bold>@{<green>%s@}@} (+%s %.2f%%) @{<bold;red>%s@}\n    %s\n"
         in
         Ocolor_format.printf rest_fmt pre ver numvotes popularity ood descr)
-      results;
-    Lwt.return ()
+      results
   in
   let open Lwt.Syntax in
   let* body = search_aur term in
-  display_search_results body
+  display_search_results body;
+  Lwt.return ()
+
+type fetch_error =
+  | Pkg_not_found of string
+  | Already_cloned of string
+  | Git_failed of { cmd : string; status : Core_unix.Exit_or_signal.error }
+
+let fetch pkgname : (unit, fetch_error) result =
+  let open Core.Result.Let_syntax in
+  let pkglocation = aur_location ^ "/" ^ pkgname in
+  let check_git cmd = function
+    | Ok () -> Ok ()
+    | Error status -> Error (Git_failed { cmd; status })
+  in
+  let dir = Filename.concat pkgname ".git" in
+  if Sys.file_exists dir && Sys.is_directory dir then
+    Error (Already_cloned pkgname)
+  else
+    let%bind () =
+      match run_quiet "git" [ "ls-remote"; "--exit-code"; pkglocation ] with
+      | Error (`Exit_non_zero 2) -> Error (Pkg_not_found pkgname)
+      | status -> check_git "git ls-remote" status
+    in
+    check_git "git clone" (run "git" [ "clone"; pkglocation ])

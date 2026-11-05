@@ -3,18 +3,19 @@
 (name oaurutil)
 (generate_opam_files true)
 (source
- (github username/reponame))
-(authors "Author Name <author@example.com>")
-(maintainers "Maintainer Name <maintainer@example.com>")
-(license LICENSE)
-(documentation https://url/to/documentation)
+ (github fredericboileau/oaurutils))
+(authors "Frederic Boileau <frederic.boileau@protonmail.com>")
+(maintainers "Frederic Boileau <frederic.boileau@protonmail.com>")
+(license BSD-3-Clause)
+; (documentation https://url/to/documentation)
 
 (package
  (name oaurutil)
- (synopsis "A short synopsis")
- (description "A longer description")
- (depends ocaml dune core core_unix cohttp-lwt-unix tls-lwt lwt ocolor yojson)
- (tags
-  ("add topics" "to describe" your project)))
+ (synopsis "A rewrite of Alad's aurutils for archlinux in ocaml")
+ (description "Hobby project")
+ (depends ocaml dune core core_unix ppx_let cohttp-lwt-unix tls-lwt lwt ocolor yojson))
+ ;
+ ; (tags
+ ;  ("add topics" "to describe" your project)))
 
 ; See the complete stanza docs at https://dune.readthedocs.io/en/stable/reference/dune-project/index.html

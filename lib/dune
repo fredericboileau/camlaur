@@ -1,3 +1,5 @@
 (library
  (name aur)
- (libraries core_unix cohttp-lwt-unix tls-lwt ocolor yojson))
+ (preprocess
+  (pps ppx_let))
+ (libraries core core_unix cohttp-lwt-unix tls-lwt ocolor yojson))
