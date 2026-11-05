@@ -14,6 +14,9 @@ let search =
             exit 1
         | Error (Aur.Web.Aur_error msg) ->
             eprintf "%s: AUR error: %s\n" progname msg;
+            exit 1
+        | Error (Aur.Web.Bad_response msg) ->
+            eprintf "%s: Bad response from aur: %s\n" progname msg;
             exit 1]
 
 let fetch =

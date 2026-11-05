@@ -2,7 +2,7 @@ open Util
 
 let aur_location = "https://aur.archlinux.org"
 let aur_rpc_ver = 5
-let ua_header = Cohttp.Header.init_with "User-Agent" "oaur"
+let ua_header = Cohttp.Header.init_with "User-Agent" "camlaur"
 
 type search_error =
   | Aur_error of string
@@ -32,7 +32,6 @@ let search term =
     in
     Lwt.catch
       (fun () ->
-        let open Lwt.Syntax in
         let* _, body = Cohttp_lwt_unix.Client.get ~headers:ua_header query in
         let+ body_str = Cohttp_lwt.Body.to_string body in
         Ok body_str)
@@ -92,15 +91,13 @@ let search term =
           (Option.value ~default:"" r.descr))
       results
   in
-  let* body = search_aur term in
-  match body with
-  | Error e -> Lwt.return (Error e)
-  | Ok body -> (
-      match parse_aur body with
-      | Error e -> Lwt.return (Error e)
-      | Ok results ->
-          display_search_results results;
-          Lwt.return (Ok ()))
+  let* results = search_aur term in
+  Lwt.return
+    (let ( let* ) = Result.bind in
+     let* body = results in
+     let* parsed = parse_aur body in
+     display_search_results parsed;
+     Ok ())
 
 type fetch_error =
   | Pkg_not_found of string
