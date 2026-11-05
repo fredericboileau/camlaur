@@ -1,5 +1,5 @@
 (executable
- (public_name oaurutil)
+ (public_name camlaur)
  (name main)
  (preprocess
   (pps ppx_let))
