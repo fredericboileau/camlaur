@@ -15,3 +15,10 @@ let run ?(quiet = false) ?(quiet_stderr = false) ?env prog args :
   waitpid child.pid
 
 let run_quiet = run ~quiet:true ~quiet_stderr:true
+
+let in_path prog =
+  match Sys.getenv_opt "PATH" with
+  | None -> false
+  | Some path ->
+      String.split_on_char ':' path
+      |> List.exists (fun dir -> Sys.file_exists (Filename.concat dir prog))

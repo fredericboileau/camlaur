@@ -4,15 +4,24 @@ let aur_location = "https://aur.archlinux.org"
 let aur_rpc_ver = 5
 let ua_header = Cohttp.Header.init_with "User-Agent" "oaur"
 
+type search_error = Aur_error of string | Network_error of string
+
 let search term =
   let search_aur term =
     let aururl = Uri.of_string aur_location in
     let path = "/rpc" ^ "/v" ^ string_of_int aur_rpc_ver ^ "/search/" ^ term in
     let query = Uri.with_path aururl path in
-    let open Lwt.Syntax in
-    let open Cohttp_lwt_unix in
-    let* _, body = Client.get ~headers:ua_header query in
-    Cohttp_lwt.Body.to_string body
+    let network_error = function
+      | Unix.Unix_error (err, _, _) -> Network_error (Unix.error_message err)
+      | exn -> Network_error (Printexc.to_string exn)
+    in
+    Lwt.catch
+      (fun () ->
+        let open Lwt.Syntax in
+        let* _, body = Cohttp_lwt_unix.Client.get ~headers:ua_header query in
+        let+ body_str = Cohttp_lwt.Body.to_string body in
+        Ok body_str)
+      (fun exn -> Lwt.return (Error (network_error exn)))
   in
   let display_search_results body =
     let osc8_link uri label =
@@ -35,7 +44,10 @@ let search term =
         let ver = member "Version" result |> to_string in
         let numvotes = member "NumVotes" result |> to_int |> string_of_int in
         let popularity = member "Popularity" result |> to_number in
-        let descr = member "Description" result |> to_string in
+        let descr =
+          member "Description" result
+          |> to_string_option |> Option.value ~default:""
+        in
         let ood =
           match member "OutOfDate" result |> to_number_option with
           | None -> ""
@@ -53,13 +65,17 @@ let search term =
   in
   let open Lwt.Syntax in
   let* body = search_aur term in
-  display_search_results body;
-  Lwt.return ()
+  match body with
+  | Ok body ->
+      display_search_results body;
+      Lwt.return (Ok ())
+  | Error e -> Lwt.return (Error e)
 
 type fetch_error =
   | Pkg_not_found of string
   | Already_cloned of string
   | Git_failed of { cmd : string; status : Core_unix.Exit_or_signal.error }
+  | Git_not_installed
 
 let fetch pkgname : (unit, fetch_error) result =
   let open Core.Result.Let_syntax in
@@ -72,6 +88,7 @@ let fetch pkgname : (unit, fetch_error) result =
   if Sys.file_exists dir && Sys.is_directory dir then
     Error (Already_cloned pkgname)
   else
+    let%bind () = if in_path "git" then Ok () else Error Git_not_installed in
     let%bind () =
       match run_quiet "git" [ "ls-remote"; "--exit-code"; pkglocation ] with
       | Error (`Exit_non_zero 2) -> Error (Pkg_not_found pkgname)
