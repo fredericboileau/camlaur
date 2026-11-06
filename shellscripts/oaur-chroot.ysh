@@ -1,0 +1,93 @@
+#!/usr/bin/env ysh
+
+source $LIB_YSH/args.ysh
+
+setglobal ENV.PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+var progname = "camlaur"
+var subprogname = "chroot"
+var machine = $(uname -m)
+var etcdir = "/etc/aurutils"
+var shrdir = "/usr/share/devtools"
+var default_pacman_paths = :| 
+  $etcdir/pacman-$machine.conf 
+  $shrdir/pacman.conf.d/aurutils-$machine.conf |
+var default_makepkg_paths = :|
+  $etcdir/makepkg-$machine.conf
+  $shrdir/makepkg.conf.d/$machine.conf |
+
+
+proc diag_conf_missing (what; pathschecked) {
+  pr -to 4 >&2 <<< """
+    $progname-$subprogname could not find file $what
+    for container useage. Before using $progname-$subprogname,
+    make sure this file is created and valid. 
+    The following file paths were checked
+  """
+  write --j8 -- @pathschecked | pr -to 8 >&2
+}
+
+parser (&spec) {
+    flag -C --pacman-conf (Str, default="")
+    flag -M --makepkg-conf (Str, default="")
+    flag -c --create (Bool, default=false)
+    flag -D --directory (Str, default="/var/lib/aurbuild/$machine")
+    rest base_packages
+}
+var args = parseArgs(spec, ARGV)
+
+
+var pacman_conf = args["pacman-conf"]
+if (pacman_conf === "") {
+  for def in @default_pacman_paths {
+    if test -f $def {
+      setvar pacman_conf = def
+      break
+    }
+  }
+}
+if (pacman_conf === "") {
+  diag_conf_missing "pacman.conf" (default_pacman_paths)
+}
+var makepkg_conf = args["makepkg-conf"]
+if (makepkg_conf === "") {
+  for def in @default_makepkg_paths {
+      if test -f $def {
+          setvar makepkg_conf = def
+          break
+        }
+    }
+}
+if (makepkg_conf === "") {
+  diag_conf_missing "makepkg.conf" (default_makepkg_paths)
+}
+
+var bindmounts_rw = []
+var server_file = / %start 'Server' s* '=' s* 'file://' <capture dot+ as path> /
+for line in (io.stdin) {
+  if (line ~ server_file){
+    call bindmounts_rw->append(_group('path'))
+  }
+} < <(pacman-conf --config $pacman_conf)
+
+echo $[args.directory]
+var create = args.create
+if (create) {
+  var base_packages
+    if (len(args.base_packages) > 0) {
+      setvar base_packages = args.base_packages
+    } elif ( ($(pacini --section=multilib $pacman_conf) !== "") and machine === "x86_64") {
+      setvar base_packages = :| base-devel multilib-devel |
+    } else {
+      setvar base_packages = :| base-devel |
+    }
+  if ! test -d $[args.directory] {
+    sudo install -d $[args.directory] -m 755 -v
+  }
+  if ! test -d $[args.directory]/root {
+    sudo mkarchroot -C $pacman_conf -M $makepkg_conf $[args.directory]/root @base_packages
+  } else {
+      setvar create = 0 
+  }
+}
+
