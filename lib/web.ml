@@ -116,8 +116,9 @@ let fetch pkgname : (unit, fetch_error) result =
   if Sys.file_exists dir && Sys.is_directory dir then
     Error (Already_cloned pkgname)
   else
-    let%bind () = if in_path "git" then Ok () else Error Git_not_installed in
-    let%bind () =
+    let ( let* ) = Result.bind in
+    let* () = if in_path "git" then Ok () else Error Git_not_installed in
+    let* () =
       match run_quiet "git" [ "ls-remote"; "--exit-code"; pkglocation ] with
       | Error (`Exit_non_zero 2) -> Error (Pkg_not_found pkgname)
       | status -> check_git "git ls-remote" status
