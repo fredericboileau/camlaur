@@ -1,14 +1,12 @@
 #!/usr/bin/env ysh
+# camlaur-chroot: command-line front end for lib/Chroot.ysh
 
 use $LIB_YSH/args.ysh --pick parser parseArgs
 use $_this_dir/lib/ConfUtils.ysh
+use $_this_dir/lib/Chroot.ysh
 
-#setglobal ENV.PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+setglobal ENV.PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
-const machine = $(uname -m)
-const progname = "camlaur"
-const subprogname = "chroot"
-const default_container_directory = "/var/lib/aurbuild/$machine"
 
 
 proc main {
@@ -16,7 +14,7 @@ proc main {
   parser (&spec) {
     flag -C --pacman-conf (Str, default="")
     flag -M --makepkg-conf (Str, default="")
-    flag -D --directory (Str, default=default_container_directory)
+    flag -D --directory (Str, default=Chroot.default_directory)
     flag -c --create (Bool, default=false)
     flag -U --update (Bool, default=false)
     flag -B --build (Bool, default=false)
@@ -24,70 +22,21 @@ proc main {
   }
   var args = parseArgs(spec, ARGV)
   var directory = args.directory
+
   var conf
   ConfUtils resolve_conf_files (args, &conf)
-  var bindmounts_rw = []
-  ConfUtils find_file_repos (conf, &bindmounts_rw)
+  var bindmounts = []
+  ConfUtils find_file_repos (conf, &bindmounts)
 
   if (args.create) {
-    var base_packages
-    if (len(args.base_packages) > 0) {
-      setvar base_packages = args.base_packages
-    } elif ( ($(pacini --section=multilib $[conf['pacman.conf']]) !== "") and machine === "x86_64") {
-      setvar base_packages = :| base-devel multilib-devel |
-    } else {
-      setvar base_packages = :| base-devel |
-    }
-    if ! test --dir $directory {
-      sudo install -d $directory -m 755 -v
-    }
-    if ! test --dir $directory/root {
-      ... sudo mkarchroot 
-          -C $[conf["pacman.conf"]] 
-          -M $[conf["makepkg.conf"]] 
-          $directory/root 
-          @base_packages
-          ;
-    } 
+    Chroot create (conf, directory, args.base_packages)
   }
-  # Enforce invariant before moving on
-  if ! test --dir $directory/root {
-    echo >&2  "$progname: $directory/root is not a directory"
-    echo >&2  "$progname: did you run $progname-chroot --create?"
-    exit 20
-  }
+  Chroot check_root (directory)
   if (args.update) {
-    redir >&2 {
-      var bindmounts_rw_nspawn = []
-      for x in @bindmounts_rw {
-        call bindmounts_rw_nspawn->append("--bind=$x")
-      }
-      ... sudo arch-nspawn 
-          -C $[conf["pacman.conf"]] 
-          -M $[conf["makepkg.conf"]]
-          $directory/root
-          @bindmounts_rw_nspawn
-          pacman -Syu --noconfirm @[args.base_packages]
-          ;
-    } 
+    Chroot update (conf, directory, bindmounts, args.base_packages)
   }
   if (args.build) {
-    redir >&2 {
-      var bindmounts_rw_makechrootpkg = []
-      for x in @bindmounts_rw {
-        call bindmounts_rw_makechrootpkg->append("-d$x")
-      }
-      var auth_arg = (
-          "--preserve-env=SRCDEST,SRCPKGDEST,PKGDEST,LOGDEST," ++
-          "MAKEFLAGS,PACKAGER,GNUPGHOME,SSH_AUTH_SOCK"
-      )
-      ... sudo $auth_arg 
-          makechrootpkg
-          -r $directory
-          @bindmounts_rw_makechrootpkg
-          -cu
-          ;
-    }
+    Chroot build (directory, bindmounts)
   }
 }
 
@@ -95,5 +44,4 @@ if is-main {
   main @ARGV
 }
 
-setvar __provide__ = :| main |
 # vim: ft=ysh

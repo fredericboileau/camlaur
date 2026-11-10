@@ -1,0 +1,71 @@
+const MACHINE = $(uname -m)
+const PROGNAME = "camlaur"
+const default_directory = "/var/lib/aurbuild/$machine"
+
+
+proc create (; conf, directory, base_packages) {
+  var packages = base_packages
+  if (len(packages) === 0) {
+    if (machine === "x86_64" and $(pacini --section=multilib $[conf['pacman.conf']]) !== "") {
+      setvar packages = :| base-devel multilib-devel |
+    } else {
+      setvar packages = :| base-devel |
+    }
+  }
+  if ! test --dir $directory {
+    sudo install -d $directory -m 755 -v
+  }
+  if ! test --dir $directory/root {
+    ... sudo mkarchroot
+      -C $[conf['pacman.conf']]
+      -M $[conf['makepkg.conf']]
+      $directory/root
+      @packages
+      ;
+  }
+}
+
+proc check_root (; directory) {
+  if ! test --dir $directory/root {
+    echo >&2 "$progname: $directory/root is not a directory"
+    echo >&2 "$progname: did you run $progname-chroot --create?"
+    exit 20
+  }
+}
+
+proc update (; conf, directory, bindmounts, packages) {
+  var nspawn_binds = []
+  for x in (bindmounts) {
+    call nspawn_binds->append("--bind=$x")
+  }
+  redir >&2 {
+    ... sudo arch-nspawn
+        -C $[conf['pacman.conf']]
+        -M $[conf['makepkg.conf']]
+        $directory/root
+        @nspawn_binds
+        pacman -Syu --noconfirm @packages
+        ;
+  }
+}
+
+proc build (; directory, bindmounts) {
+  var makechrootpkg_binds = []
+  for x in (bindmounts) {
+    call makechrootpkg_binds->append("-d$x")
+  }
+  var preserve_env = (
+    "--preserve-env=SRCDEST,SRCPKGDEST,PKGDEST,LOGDEST," ++
+    "MAKEFLAGS,PACKAGER,GNUPGHOME,SSH_AUTH_SOCK"
+  )
+  redir >&2 {
+    ... sudo $preserve_env
+        makechrootpkg
+        -r $directory
+        @makechrootpkg_binds
+        -cu
+        ;
+  }
+}
+
+setvar __provide__ = :| default_directory create check_root update build |
