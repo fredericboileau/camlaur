@@ -20,10 +20,10 @@ const default_container_directory = "/var/lib/aurbuild/$machine"
 
 proc diag_conf_missing (what; pathschecked) {
   pr -to 4 >&2 <<< """
-    $progname-$subprogname could not find file $what
-    for container useage. Before using $progname-$subprogname,
-    make sure this file is created and valid. 
-    The following file paths were checked
+$progname-$subprogname could not find file $what
+for container useage. Before using $progname-$subprogname,
+make sure this file is created and valid. 
+The following file paths were checked
   """
   write --j8 -- @pathschecked | pr -to 8 >&2
 }
@@ -86,17 +86,17 @@ proc main {
     } else {
       setvar base_packages = :| base-devel |
     }
-    if ! test -d $directory {
+    if ! test --dir $directory {
       sudo install -d $directory -m 755 -v
     }
-    if ! test -d $directory/root {
+    if ! test --dir $directory/root {
       sudo mkarchroot -C $pacman_conf -M $makepkg_conf $directory/root @base_packages
     } else {
       setvar create = false 
     }
   }
 
-  if ! test -d $directory/root {
+  if ! test --dir $directory/root {
     echo >&2  "$progname: $directory/root is not a directory"
     echo >&2  "$progname: did you run $progname-chroot --create?"
     exit 20
@@ -120,9 +120,9 @@ proc main {
   if (args.build) {
     redir >&2 {
       var bindmounts_rw_makechrootpkg = []
-        for x in @bindmounts_rw {
-          call bindmounts_rw_makechrootpkg->append("-d$x")
-        }
+      for x in @bindmounts_rw {
+        call bindmounts_rw_makechrootpkg->append("-d$x")
+      }
       var auth_arg = (
           "--preserve-env=SRCDEST,SRCPKGDEST,PKGDEST,LOGDEST," ++
           "MAKEFLAGS,PACKAGER,GNUPGHOME,SSH_AUTH_SOCK"
@@ -134,7 +134,6 @@ proc main {
     }
   }
 }
-
 
 if is-main {
   main @ARGV
