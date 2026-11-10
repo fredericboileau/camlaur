@@ -1,17 +1,16 @@
 #!/usr/bin/env ysh
 
-source $LIB_YSH/args.ysh
-
+use $LIB_YSH/args.ysh --pick parser parseArgs
 use $_this_dir/lib/ConfUtils.ysh
+use $_this_dir/camlaur-chroot
+const Chroot = getVar('camlaur-chroot')
 
 const progname = "camlaur"
 const subprogname = "build"
-
 const tmp_base = get(ENV, 'TMPDIR', '/tmp') ++ "/$progname-$UID"
 const var_tmp_base = get(ENV, 'TMPDIR', '/var/tmp') ++ "/$progname-$UID"
 # Need global for trap_exit later
 var tmp, var_tmp
-
 
 proc trap_exit {
   proc diag_moved_packages (dir) {
@@ -46,11 +45,11 @@ The following files were preserved:"""
 }
 
 proc main {
-
   parser (&spec) {
-    flag -c --chroot (Bool, default=false)
+    #flag -c --chroot (Bool, default=false)
     flag -C --pacman-conf (Str, default="")
     flag -M --makepkg-conf (Str, default="")
+    flag -B --build-packages (List[Str], default=[])
   }
   var args = parseArgs(spec, ARGV)
 
@@ -66,14 +65,21 @@ proc main {
     echo >&2 "$progname-$subprogname: could not create temp directories:"
     echo >&2 "  tmp_base=$tmp_base"
     echo >&2 "  var_tmp_base=$var_tmp_base"
+    exit 2
   }
 
-  #var conf
-  #ConfUtils resolve_conf_files (args, &conf)
-
+  var conf
+  ConfUtils resolve_conf_files (args, &conf)
+  ... Chroot main --create --update 
+      -C $[conf['pacman.conf']] 
+      -M $[conf['makepkg.conf']] 
+      -- 
+      @[args['build-packages']]
+      ;
 
 }
 
 if is-main {
     main @ARGV
 }
+# vim: ft=ysh

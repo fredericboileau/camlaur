@@ -15,11 +15,11 @@ const default_makepkg_paths = :|
 proc find_file_repos (;conf, out){
   var file_repos = []
   var server_file = / %start 'Server' s* '=' s* 'file://' <capture dot+ as path> /
-    for line in (io.stdin) {
-      if (line ~ server_file){
-        call file_repos->append(_group('path'))
-      }
-    } < <(pacman-conf --config $[conf["pacman.conf"]])
+  for line in (io.stdin) {
+    if (line ~ server_file){
+      call file_repos->append(_group('path'))
+    }
+  } < <(pacman-conf --config $[conf["pacman.conf"]])
   call out->setValue(file_repos)
 }
 
@@ -33,7 +33,7 @@ $progname could not find file $what. Before using $progname, make sure this file
 is created and valid. The following file paths were checked:
 """
     write -n -- $msg >&2
-    printf '%q\n' @pathschecked 
+    printf '%q\n' @pathschecked >&2
   }
 
   var confs =  {
@@ -62,7 +62,8 @@ is created and valid. The following file paths were checked:
       } 
     }
     if ! test -r $[result[name]] {
-      printf '%s: Could not read file: %q\n' $progname $[result[name]] 
+      printf >&2 '%s: Could not read file: %q\n' $progname $[result[name]] 
+      exit 2
     }
   }
   call out->setValue(result)
