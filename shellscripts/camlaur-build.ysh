@@ -2,6 +2,8 @@
 
 source $LIB_YSH/args.ysh
 
+use $_this_dir/lib/ConfUtils.ysh
+
 const progname = "camlaur"
 const subprogname = "build"
 
@@ -47,6 +49,8 @@ proc main {
 
   parser (&spec) {
     flag -c --chroot (Bool, default=false)
+    flag -C --pacman-conf (Str, default="")
+    flag -M --makepkg-conf (Str, default="")
   }
   var args = parseArgs(spec, ARGV)
 
@@ -64,9 +68,9 @@ proc main {
     echo >&2 "  var_tmp_base=$var_tmp_base"
   }
 
-  if (chroot) {
-    
-  }
+  var conf
+  ConfUtils resolve_conf_files (args, &conf)
+
 
 }
 

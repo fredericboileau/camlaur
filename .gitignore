@@ -1,5 +1,6 @@
 # dune build output, which includes packages built by dune package management
 _build/
+dune.lock/
 
 # Generated when installing executables
 *.install

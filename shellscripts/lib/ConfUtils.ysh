@@ -17,13 +17,12 @@ proc resolve_conf_files (; args, out) {
   #If either the non empty or default_paths are not regular files, exit with message
 
   proc diag_conf_missing (; what, pathschecked) {
-    pr -to 4 >&2 <<< """
-  $progname could not find file $what
-  for container usage. Before using $progname,
-  make sure this file is created and valid. 
-  The following file paths were checked
-  """
-    write --j8 -- @pathschecked | pr -to 8 >&2
+    var msg = """
+$progname could not find file $what. Before using $progname, make sure this file
+is created and valid. The following file paths were checked:
+"""
+    write -n -- $msg >&2
+    printf '%q\n' @pathschecked 
   }
 
   var confs =  {
@@ -49,7 +48,10 @@ proc resolve_conf_files (; args, out) {
       if (get(result, name, null) is null) {
         diag_conf_missing (name, spec.defaults)
         exit 2
-      }
+      } 
+    }
+    if ! test -r $[result[name]] {
+      printf '%s: Could not read file: %q\n' $progname $[result[name]] 
     }
   }
   call out->setValue(result)
