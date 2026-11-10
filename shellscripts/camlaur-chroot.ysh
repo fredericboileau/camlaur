@@ -2,50 +2,14 @@
 
 source $LIB_YSH/args.ysh
 
+use $_this_dir/lib/ConfUtils.ysh
+
 setglobal ENV.PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
+const machine = $(uname -m)
 const progname = "camlaur"
 const subprogname = "chroot"
-const machine = $(uname -m)
-const etcdir = "/etc/aurutils"
-const shrdir = "/usr/share/devtools"
-const default_pacman_paths = :| 
-  $etcdir/pacman-$machine.conf 
-  $shrdir/pacman.conf.d/aurutils-$machine.conf |
-const default_makepkg_paths = :|
-  $etcdir/makepkg-$machine.conf
-  $shrdir/makepkg.conf.d/$machine.conf |
 const default_container_directory = "/var/lib/aurbuild/$machine"
-
-
-proc diag_conf_missing (what; pathschecked) {
-  pr -to 4 >&2 <<< """
-$progname-$subprogname could not find file $what
-for container useage. Before using $progname-$subprogname,
-make sure this file is created and valid. 
-The following file paths were checked
-  """
-  write --j8 -- @pathschecked | pr -to 8 >&2
-}
-
-proc set_conf_file (; name,  x, out, default_paths) {
-  if (x === "") {
-    for def in @default_paths {
-      if test -f $def {
-          setvar x = def
-          break
-      }
-    }
-  }
-  if (x === "") {
-      diag_conf_missing $name (default_paths)
-      exit 2
-  } elif ! test -f $x {
-      diag_conf_missing $name ([x])
-      exit 2
-  } 
-  call out->setValue(x)
-}
 
 proc main {
 
@@ -61,38 +25,35 @@ proc main {
   var args = parseArgs(spec, ARGV)
 
   var directory = args.directory
-  var pacman_conf
-  var makepkg_conf
-  set_conf_file (
-    "pacman.conf", args["pacman-conf"], &pacman_conf, default_pacman_paths)
-  set_conf_file (
-    "makepkg.conf", args["makepkg-conf"], &makepkg_conf, default_makepkg_paths)
-
-  var bindmounts_rw = []
-    var server_file = / %start 'Server' s* '=' s* 'file://' <capture dot+ as path> /
-    for line in (io.stdin) {
-      if (line ~ server_file){
-        call bindmounts_rw->append(_group('path'))
-      }
-    } < <(pacman-conf --config $pacman_conf)
+  var conf
+  ConfUtils resolve_conf_files (args, &conf)
 
   var create = args.create
   if (create) {
     var base_packages
     if (len(args.base_packages) > 0) {
       setvar base_packages = args.base_packages
-    } elif ( ($(pacini --section=multilib $pacman_conf) !== "") and machine === "x86_64") {
+    } elif (machine === "x86_64" and ($(pacini --section=multilib $[conf["pacman.conf"]]) !== "")) {
       setvar base_packages = :| base-devel multilib-devel |
     } else {
       setvar base_packages = :| base-devel |
     }
+
     if ! test --dir $directory {
       sudo install -d $directory -m 755 -v
     }
+
     if ! test --dir $directory/root {
-      sudo mkarchroot -C $pacman_conf -M $makepkg_conf $directory/root @base_packages
+
+      ... sudo mkarchroot
+          -C $[conf["pacman.conf"]]
+          -M $[conf["makepkg.conf"]]
+          $directory/root
+          @base_packages
+          ;
+
     } else {
-      setvar create = false 
+      setvar create = false
     }
   }
 
@@ -102,21 +63,32 @@ proc main {
     exit 20
   }
 
+  var bindmounts_rw = []
+  var server_file = / %start 'Server' s* '=' s* 'file://' <capture dot+ as path> /
+  for line in (io.stdin) {
+    if (line ~ server_file){
+      call bindmounts_rw->append(_group('path'))
+    }
+  } < <(pacman-conf --config $[conf["pacman.conf"]])
+
   if (args.update) {
     redir >&2 {
       var bindmounts_rw_nspawn = []
-        for x in @bindmounts_rw {
-          call bindmounts_rw_nspawn->append("--bind=$x")
-        }
+      for x in @bindmounts_rw {
+        call bindmounts_rw_nspawn->append("--bind=$x")
+      }
+
       ... sudo arch-nspawn 
-          -C $pacman_conf -M $makepkg_conf 
+          -C $[conf["pacman.conf"]] 
+          -M $[conf["makepkg.conf"]]
           $directory/root
-          @bindmounts_rw_cli
+          @bindmounts_rw_nspawn
           pacman -Syu --noconfirm @[args.base_packages]
           ;
 
     } 
   }
+
   if (args.build) {
     redir >&2 {
       var bindmounts_rw_makechrootpkg = []
@@ -126,11 +98,14 @@ proc main {
       var auth_arg = (
           "--preserve-env=SRCDEST,SRCPKGDEST,PKGDEST,LOGDEST," ++
           "MAKEFLAGS,PACKAGER,GNUPGHOME,SSH_AUTH_SOCK"
-          )
-      ... sudo $auth_arg makechrootpkg
+      )
+
+      ... sudo $auth_arg 
+          makechrootpkg
           -r $directory
           @bindmounts_rw_makechrootpkg
           -cu
+          ;
     }
   }
 }

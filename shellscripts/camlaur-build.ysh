@@ -5,13 +5,8 @@ source $LIB_YSH/args.ysh
 const progname = "camlaur"
 const subprogname = "build"
 
-const env_tmpdir = get(first(ENV), 'TMPDIR', '')
-const tmp_base = (
-  (env_tmpdir if env_tmpdir !== '' else "/tmp") ++ "/$progname-$UID"
-)
-const var_tmp_base = (
-  (env_tmpdir if env_tmpdir !== '' else "/var/tmp") ++ "/$progname-$UID"
-)
+const tmp_base = get(ENV, 'TMPDIR', '/tmp') ++ "/$progname-$UID"
+const var_tmp_base = get(ENV, 'TMPDIR', '/var/tmp') ++ "/$progname-$UID"
 # Need global for trap_exit later
 var tmp, var_tmp
 
@@ -49,12 +44,29 @@ The following files were preserved:"""
 }
 
 proc main {
+
+  parser (&spec) {
+    flag -c --chroot (Bool, default=false)
+  }
+  var args = parseArgs(spec, ARGV)
+
   trap --add EXIT { trap_exit }
 
-  mkdir -pm 0700 -- $tmp_base
-  setglobal tmp = $(mktemp -d --tmpdir=$tmp_base "$subprogname.XXXXXXXX")
-  mkdir -pm 0700 -- $var_tmp_base
-  setglobal var_tmp = $(mktemp -d --tmpdir=$var_tmp_base "$subprogname.XXXXXXXX")
+  try {
+    mkdir -pm 0700 -- $tmp_base
+    setglobal tmp = $(mktemp -d --tmpdir=$tmp_base "$subprogname.XXXXXXXX")
+    mkdir -pm 0700 -- $var_tmp_base
+    setglobal var_tmp = $(mktemp -d --tmpdir=$var_tmp_base "$subprogname.XXXXXXXX")
+  }
+  if failed {
+    echo >&2 "$progname-$subprogname: could not create temp directories:"
+    echo >&2 "  tmp_base=$tmp_base"
+    echo >&2 "  var_tmp_base=$var_tmp_base"
+  }
+
+  if (chroot) {
+    
+  }
 
 }
 

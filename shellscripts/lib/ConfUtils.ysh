@@ -1,0 +1,59 @@
+const progname = "camlaur"
+const machine = $(uname -m)
+const etcdir = "/etc/aurutils"
+const shrdir = "/usr/share/devtools"
+const default_pacman_paths = :| 
+  $etcdir/pacman-$machine.conf 
+  $shrdir/pacman.conf.d/aurutils-$machine.conf 
+|
+const default_makepkg_paths = :|
+  $etcdir/makepkg-$machine.conf
+  $shrdir/makepkg.conf.d/$machine.conf 
+|
+
+
+proc resolve_conf_files (; args, out) {
+  #If conf values passed are empty (""), try one from default_paths
+  #If either the non empty or default_paths are not regular files, exit with message
+
+  proc diag_conf_missing (; what, pathschecked) {
+    pr -to 4 >&2 <<< """
+  $progname could not find file $what
+  for container usage. Before using $progname,
+  make sure this file is created and valid. 
+  The following file paths were checked
+  """
+    write --j8 -- @pathschecked | pr -to 8 >&2
+  }
+
+  var confs =  {
+    "pacman.conf":  {cli: args['pacman-conf'], defaults: default_pacman_paths},
+    "makepkg.conf": {cli: args['makepkg-conf'], defaults: default_makepkg_paths}
+  } 
+
+  var result = {}
+  for name, spec in (confs) {
+    if (spec.cli !== "") {
+      if ! test -f $[spec.cli] {
+        diag_conf_missing (name, [spec.cli])
+        exit 2
+      }
+      setvar result[name] = spec.cli
+    } else {
+      for path in @[spec.defaults] {
+        if test -f $path {
+          setvar result[name] = path
+          break
+        }
+      }
+      if (get(result, name, null) is null) {
+        diag_conf_missing (name, spec.defaults)
+        exit 2
+      }
+    }
+  }
+  call out->setValue(result)
+}
+
+
+setvar __provide__ = ["resolve_conf_files"]
