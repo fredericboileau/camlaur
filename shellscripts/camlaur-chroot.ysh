@@ -11,6 +11,7 @@ const progname = "camlaur"
 const subprogname = "chroot"
 const default_container_directory = "/var/lib/aurbuild/$machine"
 
+
 proc main {
 
   parser (&spec) {
@@ -23,72 +24,58 @@ proc main {
     rest base_packages
   }
   var args = parseArgs(spec, ARGV)
-
   var directory = args.directory
   var conf
   ConfUtils resolve_conf_files (args, &conf)
+  var bindmounts_rw = []
+    var server_file = / %start 'Server' s* '=' s* 'file://' <capture dot+ as path> /
+    for line in (io.stdin) {
+      if (line ~ server_file){
+        call bindmounts_rw->append(_group('path'))
+      }
+    } < <(pacman-conf --config $[conf["pacman.conf"]]
 
-  var create = args.create
-  if (create) {
+  if (args.create) {
     var base_packages
     if (len(args.base_packages) > 0) {
       setvar base_packages = args.base_packages
-    } elif (machine === "x86_64" and ($(pacini --section=multilib $[conf["pacman.conf"]]) !== "")) {
+    } elif ( ($(pacini --section=multilib $pacman_conf) !== "") and machine === "x86_64") {
       setvar base_packages = :| base-devel multilib-devel |
     } else {
       setvar base_packages = :| base-devel |
     }
-
     if ! test --dir $directory {
       sudo install -d $directory -m 755 -v
     }
-
     if ! test --dir $directory/root {
-
-      ... sudo mkarchroot
-          -C $[conf["pacman.conf"]]
-          -M $[conf["makepkg.conf"]]
-          $directory/root
+      ... sudo mkarchroot 
+          -C $[conf["pacman.conf"]] 
+          -M $[conf["makepkg.conf"]] 
+          $directory/root 
           @base_packages
-          ;
-
-    } else {
-      setvar create = false
-    }
+    } 
   }
-
+  # Enforce invariant before moving on
   if ! test --dir $directory/root {
     echo >&2  "$progname: $directory/root is not a directory"
     echo >&2  "$progname: did you run $progname-chroot --create?"
     exit 20
   }
-
-  var bindmounts_rw = []
-  var server_file = / %start 'Server' s* '=' s* 'file://' <capture dot+ as path> /
-  for line in (io.stdin) {
-    if (line ~ server_file){
-      call bindmounts_rw->append(_group('path'))
-    }
-  } < <(pacman-conf --config $[conf["pacman.conf"]])
-
   if (args.update) {
     redir >&2 {
       var bindmounts_rw_nspawn = []
-      for x in @bindmounts_rw {
-        call bindmounts_rw_nspawn->append("--bind=$x")
-      }
-
+        for x in @bindmounts_rw {
+          call bindmounts_rw_nspawn->append("--bind=$x")
+        }
       ... sudo arch-nspawn 
           -C $[conf["pacman.conf"]] 
           -M $[conf["makepkg.conf"]]
           $directory/root
-          @bindmounts_rw_nspawn
+          @bindmounts_rw_cli
           pacman -Syu --noconfirm @[args.base_packages]
           ;
-
     } 
   }
-
   if (args.build) {
     redir >&2 {
       var bindmounts_rw_makechrootpkg = []
@@ -99,7 +86,6 @@ proc main {
           "--preserve-env=SRCDEST,SRCPKGDEST,PKGDEST,LOGDEST," ++
           "MAKEFLAGS,PACKAGER,GNUPGHOME,SSH_AUTH_SOCK"
       )
-
       ... sudo $auth_arg 
           makechrootpkg
           -r $directory

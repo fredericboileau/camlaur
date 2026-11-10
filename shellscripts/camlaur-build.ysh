@@ -68,8 +68,8 @@ proc main {
     echo >&2 "  var_tmp_base=$var_tmp_base"
   }
 
-  var conf
-  ConfUtils resolve_conf_files (args, &conf)
+  #var conf
+  #ConfUtils resolve_conf_files (args, &conf)
 
 
 }

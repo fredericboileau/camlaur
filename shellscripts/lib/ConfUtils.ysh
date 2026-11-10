@@ -12,6 +12,17 @@ const default_makepkg_paths = :|
 |
 
 
+proc find_file_repos (;conf, out){
+  var file_repos = []
+  var server_file = / %start 'Server' s* '=' s* 'file://' <capture dot+ as path> /
+    for line in (io.stdin) {
+      if (line ~ server_file){
+        call file_repos->append(_group('path'))
+      }
+    } < <(pacman-conf --config $[conf["pacman.conf"]])
+  call out->setValue(file_repos)
+}
+
 proc resolve_conf_files (; args, out) {
   #If conf values passed are empty (""), try one from default_paths
   #If either the non empty or default_paths are not regular files, exit with message
@@ -58,4 +69,4 @@ is created and valid. The following file paths were checked:
 }
 
 
-setvar __provide__ = ["resolve_conf_files"]
+setvar __provide__ = ["resolve_conf_files", "find_file_repos"]
