@@ -1,6 +1,6 @@
 const MACHINE = $(uname -m)
 const PROGNAME = "camlaur"
-const default_directory = "/var/lib/aurbuild/$machine"
+const default_directory = "/var/lib/aurbuild/$MACHINE"
 
 
 proc create (; conf, directory, base_packages) {
@@ -27,8 +27,8 @@ proc create (; conf, directory, base_packages) {
 
 proc check_root (; directory) {
   if ! test --dir $directory/root {
-    echo >&2 "$progname: $directory/root is not a directory"
-    echo >&2 "$progname: did you run $progname-chroot --create?"
+    echo >&2 "$PROGNAME: $directory/root is not a directory"
+    echo >&2 "$PROGNAME: did you run $PROGNAME-chroot --create?"
     exit 20
   }
 }

@@ -13,13 +13,20 @@ const default_makepkg_paths = :|
 
 
 proc find_file_repos (;conf, out){
-  var file_repos = []
-  var server_file = / %start 'Server' s* '=' s* 'file://' <capture dot+ as path> /
-  for line in (io.stdin) {
-    if (line ~ server_file){
-      call file_repos->append(_group('path'))
+  var file_repos = {}
+  var pacman_config = @(pacman-conf --config $[conf['pacman.conf']])
+
+  var section_pat = / %start '[' <capture ![ ']' ]+ as section> ']' /
+  var server_file_pat = / %start 'Server' s* '=' s* 'file://' <capture dot+ as path> /
+  var current_section
+
+  for line in (pacman_config) {
+    if (line ~ section_pat) {
+      setvar current_section = _group('section')
+    } elif (line ~ server_file_pat) {
+      setvar file_repos[current_section] = _group('path')
     }
-  } < <(pacman-conf --config $[conf["pacman.conf"]])
+  } 
   call out->setValue(file_repos)
 }
 

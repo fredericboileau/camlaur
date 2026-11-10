@@ -25,8 +25,9 @@ proc main {
 
   var conf
   ConfUtils resolve_conf_files (args, &conf)
-  var bindmounts = []
-  ConfUtils find_file_repos (conf, &bindmounts)
+  var file_repos # dict sectionName -> filePath
+  ConfUtils find_file_repos (conf, &file_repos)
+  var bindmounts = values(file_repos) # dict -> list of filepaths
 
   if (args.create) {
     Chroot create (conf, directory, args.base_packages)
