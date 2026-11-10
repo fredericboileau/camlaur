@@ -52,12 +52,15 @@ proc main {
   parser (&spec) {
     flag -C --pacman-conf (Str, default="")
     flag -M --makepkg-conf (Str, default="")
-    flag -c --create (Bool, default=false)
     flag -D --directory (Str, default=default_container_directory)
+    flag -c --create (Bool, default=false)
+    flag -U --update (Bool, default=false)
+    flag -B --build (Bool, default=false)
     rest base_packages
   }
   var args = parseArgs(spec, ARGV)
 
+  var directory = args.directory
   var pacman_conf
   var makepkg_conf
   set_conf_file (
@@ -76,29 +79,62 @@ proc main {
   var create = args.create
   if (create) {
     var base_packages
-      if (len(args.base_packages) > 0) {
-        setvar base_packages = args.base_packages
-      } elif ( ($(pacini --section=multilib $pacman_conf) !== "") and machine === "x86_64") {
-        setvar base_packages = :| base-devel multilib-devel |
-      } else {
-        setvar base_packages = :| base-devel |
-      }
-    if ! test -d $[args.directory] {
-      sudo install -d $[args.directory] -m 755 -v
+    if (len(args.base_packages) > 0) {
+      setvar base_packages = args.base_packages
+    } elif ( ($(pacini --section=multilib $pacman_conf) !== "") and machine === "x86_64") {
+      setvar base_packages = :| base-devel multilib-devel |
+    } else {
+      setvar base_packages = :| base-devel |
     }
-    if ! test -d $[args.directory]/root {
-      sudo mkarchroot -C $pacman_conf -M $makepkg_conf $[args.directory]/root @base_packages
+    if ! test -d $directory {
+      sudo install -d $directory -m 755 -v
+    }
+    if ! test -d $directory/root {
+      sudo mkarchroot -C $pacman_conf -M $makepkg_conf $directory/root @base_packages
     } else {
       setvar create = false 
     }
   }
 
-  if ! test -d $[args.directory]/root {
-    echo >&2  "$progname: $[args.directory]/root is not a directory"
+  if ! test -d $directory/root {
+    echo >&2  "$progname: $directory/root is not a directory"
     echo >&2  "$progname: did you run $progname-chroot --create?"
     exit 20
   }
+
+  if (args.update) {
+    redir >&2 {
+      var bindmounts_rw_nspawn = []
+        for x in @bindmounts_rw {
+          call bindmounts_rw_nspawn->append("--bind=$x")
+        }
+      ... sudo arch-nspawn 
+          -C $pacman_conf -M $makepkg_conf 
+          $directory/root
+          @bindmounts_rw_cli
+          pacman -Syu --noconfirm @[args.base_packages]
+          ;
+
+    } 
+  }
+  if (args.build) {
+    redir >&2 {
+      var bindmounts_rw_makechrootpkg = []
+        for x in @bindmounts_rw {
+          call bindmounts_rw_makechrootpkg->append("-d$x")
+        }
+      var auth_arg = (
+          "--preserve-env=SRCDEST,SRCPKGDEST,PKGDEST,LOGDEST," ++
+          "MAKEFLAGS,PACKAGER,GNUPGHOME,SSH_AUTH_SOCK"
+          )
+      ... sudo $auth_arg makechrootpkg
+          -r $directory
+          @bindmounts_rw_makechrootpkg
+          -cu
+    }
+  }
 }
+
 
 if is-main {
   main @ARGV

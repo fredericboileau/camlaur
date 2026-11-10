@@ -40,30 +40,22 @@ let search term =
   let parse_aur body : (response_parsed list, search_error) result =
     try
       let json = from_string body in
-      match member "type" json |> to_string_option with
-      | Some "error" ->
-          let msg =
-            member "error" json |> to_string_option
-            |> Option.value ~default:"unknown error"
-          in
-          Error (Aur_error msg)
-      | _ ->
-          Ok
-            (member "results" json |> to_list
-            |> List.map (fun r ->
-                let name = member "Name" r |> to_string in
-                let ver = member "Version" r |> to_string in
-                let numvotes = member "NumVotes" r |> to_int |> string_of_int in
-                let popularity = member "Popularity" r |> to_number in
-                let descr = member "Description" r |> to_string_option in
-                let ood =
-                  match member "OutOfDate" r |> to_number_option with
-                  | None -> ""
-                  | Some epoch ->
-                      Core_unix.strftime (Core_unix.gmtime epoch)
-                        "(Out-of-date: %d %B %Y)"
-                in
-                { name; ver; numvotes; popularity; descr; ood }))
+      Ok
+        (member "results" json |> to_list
+        |> List.map (fun r ->
+            let name = member "Name" r |> to_string in
+            let ver = member "Version" r |> to_string in
+            let numvotes = member "NumVotes" r |> to_int |> string_of_int in
+            let popularity = member "Popularity" r |> to_number in
+            let descr = member "Description" r |> to_string_option in
+            let ood =
+              match member "OutOfDate" r |> to_number_option with
+              | None -> ""
+              | Some epoch ->
+                  Core_unix.strftime (Core_unix.gmtime epoch)
+                    "(Out-of-date: %d %B %Y)"
+            in
+            { name; ver; numvotes; popularity; descr; ood }))
     with
     | Yojson.Json_error msg -> Error (Bad_response msg)
     | Yojson.Basic.Util.Type_error (msg, _) -> Error (Bad_response msg)
