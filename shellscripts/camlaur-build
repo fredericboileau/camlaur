@@ -42,6 +42,19 @@ The following files were preserved:"""
   }
 }
 
+proc namcap_test (; noconfirm) {
+  echo "$q namcap output:"
+  namcap --info PKGBUILD
+  if (not noconfirm) {
+    var answer
+      write -n -- "$progname: proceed with build? [Y/n]"
+      read --raw-line (&answer)
+      if (answer === "n") {
+        continue
+      }
+  }
+}
+
 proc main {
   parser (&spec) {
     #flag -c --chroot (Bool, default=false)
@@ -170,27 +183,18 @@ proc main {
   }
 
   for q in (queue) {
-    echo >&2 "$progname: building $q"
     if (q === '') {
       echo >&2 "$progname: Empty directory passed in --arg-file"
       exit 2
     }
     cd $q {
+      echo >&2 "$progname: building $q"
       if ! test -f PKGBUILD {
         echo >&2 "$progname: $q doesn't contain a PKGBUILD"
         exit 2
       }
       if (args.namcap) {
-        echo "$q namcap output:"
-        namcap --info PKGBUILD
-        if (not args.noconfirm) {
-          var answer
-          write -n -- "$progname: proceed with build? [Y/n]"
-          read --raw-line (&answer)
-          if (answer === "n") {
-            continue
-          }
-        }
+        namcap_test (args.noconfirm)
       }
     }
   }
