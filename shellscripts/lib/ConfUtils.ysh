@@ -11,6 +11,14 @@ const default_makepkg_paths = :|
   $shrdir/makepkg.conf.d/$machine.conf 
 |
 
+func first_non_empty(...values) {
+  for v in (values) {
+    if (v !== '' and v is not null) {
+      return (v)
+    }
+  }
+  return ('')
+}
 
 proc find_file_repos (;conf, out){
   var file_repos = {}
@@ -77,4 +85,8 @@ is created and valid. The following file paths were checked:
 }
 
 
-setvar __provide__ = ["resolve_conf_files", "find_file_repos"]
+setvar __provide__ = :|
+  resolve_conf_files 
+  find_file_repos 
+  first_non_empty 
+|

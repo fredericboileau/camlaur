@@ -46,12 +46,19 @@ The following files were preserved:"""
 proc main {
   parser (&spec) {
     #flag -c --chroot (Bool, default=false)
-    flag -C --pacman-conf (Str, default="")
-    flag -M --makepkg-conf (Str, default="")
+    flag -C --pacman-conf (Str, default='')
+    flag -M --makepkg-conf (Str, default='')
     flag -B --build-packages (List[Str], default=[])
-    flag -d --database (Str, default="")
+    flag -d --database (Str, default='')
+    flag -x --dbext (Str, default='')
+    flag -s --sign (Bool, default=false)
   }
   var args = parseArgs(spec, ARGV)
+
+  if (args.sign) {
+    echo >&2 "Not implemented: --sign"
+    exit 2
+  }
 
   trap --add EXIT { trap_exit }
 
@@ -73,29 +80,63 @@ proc main {
   var file_repos # dict sectionHeader -> filePath
   ConfUtils find_file_repos (conf, &file_repos)
 
-  if (len(keys(file_repos)) === 0) {
+  if (len(file_repos) === 0) {
     echo >&2 "Error: No file repo configured in :" $[conf['pacman.conf']]
-    exit 2
+    exit 1
   }
-  if (args.database === '' and len(keys(file_repos)) > 1) {
+  if (args.database === '' and len(file_repos) > 1) {
     echo >&2 "Error no database specified and more than one available: ambiguous"
     echo >&2 "Possible values are:" @[keys(file_repos)]
-    exit 2
+    exit 1
   }
-  if (args.database !== '' and not (args.database in file_repos)) {
+  if (args.database !== '' and args.database not in file_repos) {
     echo >&2 "Error $[args.database] is not in file repos"
     echo >&2 "Possible values are:" @[keys(file_repos)]
+    exit 1
+  }
+
+  # Now either args.database is in file_repos or there is only one file_repos configured
+  var db_name = ConfUtils.first_non_empty(args.database, keys(file_repos)[0])
+  var db_root = file_repos[db_name]
+  var db_ext =  ConfUtils.first_non_empty(args.dbext, 'db')
+  var db_path = "$db_root/$db_name.$db_ext"
+  try {
+    setvar db_root = $(realpath -e -- $db_root)
+  }
+  if failed {
+    echo >&2 "$progname: Couldn't resolve $db_root"
     exit 2
   }
-  # Now either args.database is in file_repos or there is only one file_repos configured
-  var database_name
-  var database_root
-  if (args.database !== '') {
-    setvar database_name = args.database
-  } else {
-    setvar database_name = keys(file_repos)[0]
+  try {
+    setvar db_path = $(realpath -e -- $db_path)
   }
-  setvar database_root = file_repos[database_name]
+  if failed {
+    echo >&2 "$progname: Couldn't resolve  $db_path"
+    exit 2
+  }
+  if (db_path.endsWith('.db')) {
+    echo >&2 "$progname: $db_path does not have a valid extension"
+    echo >&2 "This usually happens on file systems that don't support symlinks (SMB/CIFS)"
+    echo >&2 "You can pass the archive s real extension with --dbext, e.g. db.tar.zst"
+    exit 2
+  }
+  if ! test -f $db_path {
+    echo >&2 "$progname: $db_path is not a regular file"
+    exit 2
+  }
+  if ! test -w $db_path {
+    echo >&2 "$progname: $db_path: permission denied"
+    exit 13
+  }
+
+  if (not args.sign) {
+    var db_sig = "$db_root/$db_name.db.sig"
+    if test -f $db_sig {
+      echo >&2 "$progname: $db_sig: database signature found, but signing is disabled"
+      exit 1
+    }
+  }
+
 
   var bindmounts = values(file_repos) # turn the dict into a list
   var directory = Chroot.default_directory
@@ -106,6 +147,6 @@ proc main {
 }
 
 if is-main {
-    main @ARGV
+  main @ARGV
 }
 # vim: ft=ysh
