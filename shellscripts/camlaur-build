@@ -4,7 +4,7 @@ use $LIB_YSH/args.ysh --pick parser parseArgs
 use $_this_dir/lib/ConfUtils.ysh
 use $_this_dir/lib/Chroot.ysh
 
-const startdir = PWD
+const startdir = $(pwd)
 const progname = "camlaur"
 const subprogname = "build"
 const tmp_base = get(ENV, 'TMPDIR', '/tmp') ++ "/$progname-$UID"
@@ -21,10 +21,8 @@ This may happen when signing built packages with gpg ($progname $subprogname --s
 or with certain makepkg errors
 
 The following files were preserved:"""
-
     printf '%q\n' @[glob("$dir/*")] | pr -to 8 >&2
   }
-
   if (not ('AUR_DEBUG' in first(ENV))) {
     if (tmp is not null) {
       rm -rf -- "$tmp"
@@ -55,12 +53,20 @@ proc main {
     flag -x --dbext (Str, default='')
     flag -s --sign (Bool, default=false)
     flag -z --null (Bool, default=false)
+    flag '' --namcap (Bool, default=false)
+    flag -y --noconfirm (Bool, default=false)
   }
   var args = parseArgs(spec, ARGV)
 
   if (args.sign) {
     echo >&2 "Not implemented: --sign"
     exit 2
+  }
+  if (args.namcap) {
+    if ! command -v namcap >/dev/null {
+        echo >&2 "$progname: asked for namcap but the binary cannot be found in path"
+        exit 2
+    }
   }
 
   trap --add EXIT { trap_exit }
@@ -163,7 +169,31 @@ proc main {
     setvar queue = [startdir]
   }
 
-
+  for q in (queue) {
+    echo >&2 "$progname: building $q"
+    if (q === '') {
+      echo >&2 "$progname: Empty directory passed in --arg-file"
+      exit 2
+    }
+    cd $q {
+      if ! test -f PKGBUILD {
+        echo >&2 "$progname: $q doesn't contain a PKGBUILD"
+        exit 2
+      }
+      if (args.namcap) {
+        echo "$q namcap output:"
+        namcap --info PKGBUILD
+        if (not args.noconfirm) {
+          var answer
+          write -n -- "$progname: proceed with build? [Y/n]"
+          read --raw-line (&answer)
+          if (answer === "n") {
+            continue
+          }
+        }
+      }
+    }
+  }
 }
 
 if is-main {

@@ -1,0 +1,46 @@
+#!/usr/bin/env ysh
+
+# TODO BOOTSTRAP ocaml
+
+const root = "$_this_dir/../.."
+const where_run = _this_dir
+const verbose = true
+const pkgs_to_fetch = :|
+  yay
+  pandoc-bin
+|
+
+proc echov {
+  if (verbose) {
+    echo @ARGV
+  }
+}
+
+echov "====BEGIN TEST 1===="
+cd $root { dune build }
+cd $where_run {
+  for p in (pkgs_to_fetch) {
+    echov "Fetching: $p" 
+    dune exec --no-build camlaur -- fetch $p
+  }
+}
+
+echov "====BEGIN TEST 1.1===="
+echov "Testing a single implicit build"
+cd $where_run/yay {
+  $_this_dir/../camlaur-build
+}
+echov "====END TEST 1.1 ===="
+echov ""
+
+echov "====BEGIN TEST 1.2===="
+cd $where_run {
+  $_this_dir/../camlaur-build --namcap -a <(write -- @pkgs_to_fetch)
+}
+echov "====END TEST 1.2 ===="
+echov ""
+
+
+
+
+#! vim:ft=ysh
