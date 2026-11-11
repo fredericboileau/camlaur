@@ -61,25 +61,28 @@ let search term =
     | Yojson.Basic.Util.Type_error (msg, _) -> Error (Bad_response msg)
   in
   let display_search_results results =
-    let osc8_link uri label =
-      let st = "\o033\\" in
-      let osc8 = "\o033]8" in
-      Printf.sprintf "%s;;%s%s%s%s;;%s" osc8 uri st label osc8 st
-    in
     let colored_pkg_name name =
       let fmt = Format.get_str_formatter () in
       Ocolor_format.prettify_formatter fmt;
       Format.fprintf fmt "@{<bold>@{<blue>aur@}/%s@}" name;
       Format.flush_str_formatter ()
     in
+    let make_osc8_link uri label =
+      let st = "\o033\\" in
+      let osc8 = "\o033]8" in
+      (* OSC 8 hyperlink: ESC]8 ;; URI ESC\ label ESC]8 ;; ESC\ *)
+      Printf.sprintf "%s;;%s%s%s%s;;%s" osc8 uri st label osc8 st
+    in
     List.iter
       (fun r ->
-        let label = colored_pkg_name r.name in
-        let pre = osc8_link (aur_location ^ "/packages/" ^ r.name) label in
-        let rest_fmt : _ format =
+        let link_label = colored_pkg_name r.name in
+        let link =
+          make_osc8_link (aur_location ^ "/packages/" ^ r.name) link_label
+        in
+        let fmt : _ format =
           "%s @{<bold>@{<green>%s@}@} (+%s %.2f%%) @{<bold;red>%s@}\n    %s\n"
         in
-        Ocolor_format.printf rest_fmt pre r.ver r.numvotes r.popularity r.ood
+        Ocolor_format.printf fmt link r.ver r.numvotes r.popularity r.ood
           (Option.value ~default:"" r.descr))
       results
   in
