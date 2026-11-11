@@ -42,17 +42,40 @@ The following files were preserved:"""
   }
 }
 
-proc namcap_test (; noconfirm) {
+proc namcap_test (; q, noconfirm, skip_p) {
   echo "$q namcap output:"
   namcap --info PKGBUILD
   if (not noconfirm) {
     var answer
-      write -n -- "$progname: proceed with build? [Y/n]"
-      read --raw-line (&answer)
-      if (answer === "n") {
-        continue
-      }
+    write -n -- "$progname: proceed with build? [Y/n]"
+    read --raw-line (&answer)
+    if (answer === 'n') {
+        call skip_p->setValue(true)
+    }
   }
+}
+
+proc list_packages(; db_root, makepkg_conf, pkglist_out, exist_out) {
+  var pkglist
+  try {
+    setvar pkglist = @(env PKGDEST=$db_root makepkg --config $makepkg_conf --packagelist)
+  }
+  if failed {
+    echo >&2 "$progname: makepkg --packagelist failed"
+    exit 2
+  }
+  if (len(pkglist) === 0) {
+    echo >&2 "$progname: makepkg listed no packages for this PKGBUILD"
+    exit 2
+  }
+  var exist = []
+  for p in (pkglist) {
+    if test -f $p {
+      call exist->append(p)
+    }
+  }
+  call pkglist_out->setValue(pkglist)
+  call exist_out->setValue(exist)
 }
 
 proc main {
@@ -68,6 +91,7 @@ proc main {
     flag -z --null (Bool, default=false)
     flag '' --namcap (Bool, default=false)
     flag -y --noconfirm (Bool, default=false)
+    flag -f --force (Bool, default=false)
   }
   var args = parseArgs(spec, ARGV)
 
@@ -166,6 +190,8 @@ proc main {
   Chroot check_root (directory)
   Chroot update (conf, directory, bindmounts, args['build-packages'])
 
+  # Make queue of pkgs (a list) to build either from --arg-file or
+  # implicitly the PWD of this script
   var queue
   if (args['arg-file'] !== '') {
     var input
@@ -194,8 +220,36 @@ proc main {
         exit 2
       }
       if (args.namcap) {
-        namcap_test (args.noconfirm)
+        var skip_p
+        namcap_test (q, args.noconfirm, &skip_p)
+        if (skip_p) {
+          continue
+        }
       }
+      # Just to update versions in vcs (-git) packages
+      makepkg >&2 -od --config $[conf['makepkg.conf']]
+
+      var pkglist = []
+      var exist = []
+      if (not args.force) {
+        list_packages (db_root, conf['makepkg.conf'], &pkglist, &exist)
+      }
+      # if --force these will be false because we never fill the lists
+      var fresh = len(pkglist) > 0 and len(exist) === 0
+      var partial = len(exist) > 0 and (len(exist) < len(pkglist))
+      if (partial) {
+        echo >&2 "$progname: warning: package group partially built, rebuilding"
+        printf >&2 '%q\n' @exist
+      }
+      var create = args.force or partial or fresh
+      if (create) {
+        #rest
+      } else {
+        echo >&2 "$progname: warning: skipping existing packages (use -f to overwrite)"
+        printf >&2 '%q\n' @exist
+      }
+
+
     }
   }
 }
