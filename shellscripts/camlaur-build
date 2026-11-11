@@ -4,6 +4,7 @@ use $LIB_YSH/args.ysh --pick parser parseArgs
 use $_this_dir/lib/ConfUtils.ysh
 use $_this_dir/lib/Chroot.ysh
 
+const startdir = PWD
 const progname = "camlaur"
 const subprogname = "build"
 const tmp_base = get(ENV, 'TMPDIR', '/tmp') ++ "/$progname-$UID"
@@ -46,12 +47,14 @@ The following files were preserved:"""
 proc main {
   parser (&spec) {
     #flag -c --chroot (Bool, default=false)
+    flag -a --arg-file (Str, default='')
     flag -C --pacman-conf (Str, default='')
     flag -M --makepkg-conf (Str, default='')
     flag -B --build-packages (List[Str], default=[])
     flag -d --database (Str, default='')
     flag -x --dbext (Str, default='')
     flag -s --sign (Bool, default=false)
+    flag -z --null (Bool, default=false)
   }
   var args = parseArgs(spec, ARGV)
 
@@ -137,12 +140,29 @@ proc main {
     }
   }
 
-
+  # Always build in a chroot
   var bindmounts = values(file_repos) # turn the dict into a list
   var directory = Chroot.default_directory
   Chroot create (conf, directory, args['build-packages'])
   Chroot check_root (directory)
   Chroot update (conf, directory, bindmounts, args['build-packages'])
+
+  var queue
+  if (args['arg-file'] !== '') {
+    var input
+    try {
+      read --all (&input) < $[args['arg-file']]
+    }
+    if failed {
+      echo >&2 "$progname: Couldn't read from passed queue file: $[args['arg-file']]"
+      exit 2
+    }
+    var eol = \y00 if args['null'] else \n
+    setvar queue = input.lines(eol=eol)
+  } else {
+    setvar queue = [startdir]
+  }
+
 
 }
 

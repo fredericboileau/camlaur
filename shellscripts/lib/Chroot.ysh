@@ -68,4 +68,9 @@ proc build (; directory, bindmounts) {
   }
 }
 
-setvar __provide__ = :| default_directory create check_root update build |
+setvar __provide__ = :|
+  default_directory
+  create check_root
+  update
+  build
+|
