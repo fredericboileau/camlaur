@@ -80,7 +80,6 @@ proc list_packages(; db_root, makepkg_conf, pkglist_out, exist_out) {
 
 proc main {
   parser (&spec) {
-    #flag -c --chroot (Bool, default=false)
     flag -a --arg-file (Str, default='')
     flag -C --pacman-conf (Str, default='')
     flag -M --makepkg-conf (Str, default='')
@@ -122,7 +121,7 @@ proc main {
   }
 
   var conf
-  ConfUtils resolve_conf_files (args, &conf)
+  ConfUtils resolve_conf_files (args, &conf, suffix=args.database)
   var file_repos # dict sectionHeader -> filePath
   ConfUtils find_file_repos (conf, &file_repos)
 
@@ -137,6 +136,7 @@ proc main {
   }
   if (args.database !== '' and args.database not in file_repos) {
     echo >&2 "Error $[args.database] is not in file repos"
+    echo >&2 "Looked in conf file $[conf['pacman.conf']]"
     echo >&2 "Possible values are:" @[keys(file_repos)]
     exit 1
   }
@@ -242,14 +242,27 @@ proc main {
         printf >&2 '%q\n' @exist
       }
       var create = args.force or partial or fresh
+
       if (create) {
-        #rest
+        PKGDEST="$var_tmp" Chroot build (directory, bindmounts, makepkg_args=['--holdver'])
+        ## TODO for now we don't sign so we don't have to ignore sig files
+        cd $var_tmp {
+          setvar pkglist = glob("*")
+          if (len(pkglist) === 0) {
+            echo >&2 "$progname: build of $q produced no packages in $var_tmp"
+            exit 2
+          }
+          # pkglist is now bare filenames not full paths but
+          # repo-add will work because it goes in $db_root
+          mv -f -- @pkglist $db_root
+        }
       } else {
         echo >&2 "$progname: warning: skipping existing packages (use -f to overwrite)"
         printf >&2 '%q\n' @exist
       }
 
-
+      # allow repo-add even if nothing was built, for leftover packages
+      env -C $db_root LANG=C repo-add --wait-for-lock  $db_path @pkglist
     }
   }
 }

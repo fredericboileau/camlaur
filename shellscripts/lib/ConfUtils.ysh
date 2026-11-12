@@ -1,15 +1,5 @@
 const progname = "camlaur"
 const machine = $(uname -m)
-const etcdir = "/etc/aurutils"
-const shrdir = "/usr/share/devtools"
-const default_pacman_paths = :| 
-  $etcdir/pacman-$machine.conf 
-  $shrdir/pacman.conf.d/aurutils-$machine.conf 
-|
-const default_makepkg_paths = :|
-  $etcdir/makepkg-$machine.conf
-  $shrdir/makepkg.conf.d/$machine.conf 
-|
 
 func first_non_empty(...values) {
   for v in (values) {
@@ -34,11 +24,11 @@ proc find_file_repos (;conf, out){
     } elif (line ~ server_file_pat) {
       setvar file_repos[current_section] = _group('path')
     }
-  } 
+  }
   call out->setValue(file_repos)
 }
 
-proc resolve_conf_files (; args, out) {
+proc resolve_conf_files (; args, out; suffix='') {
   #If conf values passed are empty (""), try one from default_paths
   #If either the non empty or default_paths are not regular files, exit with message
 
@@ -51,10 +41,31 @@ is created and valid. The following file paths were checked:
     printf '%q\n' @pathschecked >&2
   }
 
+  var etcdir = "/etc/aurutils"
+  var shrdir = "/usr/share/devtools"
+  var default_pacman_paths = :|
+    $etcdir/pacman-$suffix.conf
+    $etcdir/pacman-$machine.conf
+    $shrdir/pacman.conf.d/$suffix.conf
+    $shrdir/pacman.conf.d/aurutils-$machine.conf
+  | if suffix !== '' else :|
+    $etcdir/pacman-$machine.conf
+    $shrdir/pacman.conf.d/aurutils-$machine.conf
+  |
+  var default_makepkg_paths = :|
+    $etcdir/makepkg-$suffix.conf
+    $etcdir/makepkg-$machine.conf
+    $shrdir/makepkg.conf.d/$suffix.conf
+    $shrdir/makepkg.conf.d/$machine.conf
+  | if suffix !== '' else :|
+    $etcdir/makepkg-$machine.conf
+    $shrdir/makepkg.conf.d/$machine.conf
+  |
+
   var confs =  {
     "pacman.conf":  {cli: args['pacman-conf'], defaults: default_pacman_paths},
     "makepkg.conf": {cli: args['makepkg-conf'], defaults: default_makepkg_paths}
-  } 
+  }
 
   var result = {}
   for name, spec in (confs) {
@@ -74,10 +85,10 @@ is created and valid. The following file paths were checked:
       if (get(result, name, null) is null) {
         diag_conf_missing (name, spec.defaults)
         exit 2
-      } 
+      }
     }
     if ! test -r $[result[name]] {
-      printf >&2 '%s: Could not read file: %q\n' $progname $[result[name]] 
+      printf >&2 '%s: Could not read file: %q\n' $progname $[result[name]]
       exit 2
     }
   }
@@ -86,7 +97,7 @@ is created and valid. The following file paths were checked:
 
 
 setvar __provide__ = :|
-  resolve_conf_files 
-  find_file_repos 
-  first_non_empty 
+  resolve_conf_files
+  find_file_repos
+  first_non_empty
 |

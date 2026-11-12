@@ -49,7 +49,7 @@ proc update (; conf, directory, bindmounts, packages) {
   }
 }
 
-proc build (; directory, bindmounts) {
+proc build (; directory, bindmounts; makepkg_args=[]) {
   var makechrootpkg_binds = []
   for x in (bindmounts) {
     call makechrootpkg_binds->append("-d$x")
@@ -64,6 +64,8 @@ proc build (; directory, bindmounts) {
         -r $directory
         @makechrootpkg_binds
         -cu
+        --
+        @makepkg_args
         ;
   }
 }

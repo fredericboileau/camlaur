@@ -16,3 +16,6 @@ _coverage/
 .merlin
 *.swp
 .DS_Store
+
+shellscripts/tests/pandoc-bin
+shellscripts/tests/yay
