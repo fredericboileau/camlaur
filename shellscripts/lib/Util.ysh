@@ -1,0 +1,16 @@
+func map(f, xs) {
+  var out = []
+  for x in (xs) {
+    call out->append(f(x))
+  }
+  return (out)
+}
+
+func barename(path) {
+  return (path.split('/')[-1])
+}
+
+setvar __provide__ = :|
+  map
+  barename
+|

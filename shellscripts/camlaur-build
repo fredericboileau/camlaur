@@ -3,6 +3,7 @@
 use $LIB_YSH/args.ysh --pick parser parseArgs
 use $_this_dir/lib/ConfUtils.ysh
 use $_this_dir/lib/Chroot.ysh
+use $_this_dir/lib/Util.ysh --pick map barename
 
 const startdir = $(pwd)
 const progname = "camlaur"
@@ -91,13 +92,10 @@ proc main {
     flag '' --namcap (Bool, default=false)
     flag -y --noconfirm (Bool, default=false)
     flag -f --force (Bool, default=false)
+    flag '' --pool (Str, default='')
   }
   var args = parseArgs(spec, ARGV)
 
-  if (args.sign) {
-    echo >&2 "Not implemented: --sign"
-    exit 2
-  }
   if (args.namcap) {
     if ! command -v namcap >/dev/null {
         echo >&2 "$progname: asked for namcap but the binary cannot be found in path"
@@ -167,13 +165,26 @@ proc main {
     exit 2
   }
   if ! test -f $db_path {
-    echo >&2 "$progname: $db_path is not a regular file"
+    echo >&2 "$progname: db_path=$db_path is not a regular file"
     exit 2
   }
   if ! test -w $db_path {
-    echo >&2 "$progname: $db_path: permission denied"
+    echo >&2 "$progname: db_path=$db_path: permission denied"
     exit 13
   }
+  var db_pool = ''
+  if (args.pool !== '') {
+    try {
+      setvar db_pool = $(realpath -e -- $[args.pool])
+    }
+    if failed {
+      echo >&2 "$progname: Couldn't resolve path for $[args.pool]"
+      exit 2
+    }
+  }
+  if ! test -w $db_pool {
+    echo >&2 "$progname: db_pool=$db_pool permission denied"
+    }
 
   if (not args.sign) {
     var db_sig = "$db_root/$db_name.db.sig"
@@ -244,7 +255,9 @@ proc main {
       var create = args.force or partial or fresh
 
       if (create) {
+
         PKGDEST="$var_tmp" Chroot build (directory, bindmounts, makepkg_args=['--holdver'])
+
         cd $var_tmp {
           setvar pkglist = []
           for p in (glob('*')) {
@@ -262,34 +275,60 @@ proc main {
         printf >&2 '%q\n' @exist
       }
 
-      var siglist = []
-      for p in (pkglist) {
-        # already bare if create was true but otherwise need to strip
-        var pbase = p.split('/')[-1]
+      cd $var_tmp {
+        var siglist = []
+        for p in (pkglist) {
+          # already bare if create was true but otherwise need to strip
+          var pbase = barename(p)
 
-        # signature from makepkg --sign
-        if test -f $pbase.sig {
-          call siglist->append("$pbase.sig")
-        # Skipped package build with signature
-        } elif test -f $db_root/$pbase.sig && ! test -f $pbase {
-          printf >&2 '%s: existing signature file %q\n' $progname $db_root/$pbase.sig
-        } elif (args.sign) {
-          ... gpg
-              --detach-sign
-              --no-armor
-              --batch
-              --output $pbase.sig
-              $p
-              ;
-          printf >&2 '%s: created signature file %q\n' $progname $pbase.sig
-          call siglist->append("$pbase.sig")
+          # signature from makepkg --sign
+          if test -f $pbase.sig {
+            call siglist->append("$pbase.sig")
+          # Skipped package build with signature
+          } elif test -f $db_root/$pbase.sig && ! test -f $pbase {
+            printf >&2 '%s: existing signature file %q\n' $progname $db_root/$pbase.sig
+          } elif (args.sign) {
+            ... gpg
+                --detach-sign
+                --no-armor
+                --batch
+                --output $pbase.sig
+                $p
+                ;
+            printf >&2 '%s: created signature file %q\n' $progname $pbase.sig
+            call siglist->append("$pbase.sig")
+          }
         }
-      }
 
-      mv -f -- @pkglist $db_root
-      # allow repo-add even if nothing was built, for leftover packages
-      var sign_p = '-s' if args.sign else ''
-      env -C $db_root LANG=C repo-add $sign_p --wait-for-lock  $db_path @pkglist
+
+        if (create) {
+          # pkglist/siglist contain basename
+          if (db_pool !== '' and db_root !== db_pool) {
+            mv -f @siglist @pkglist $db_pool
+            var targets = []
+            for t in (pkglist ++ siglist) {
+              call targets->append("$dbpool/$t")
+            }
+            # absolute symlinks
+            ln -t $db_root -sf -- @targets
+          } else {
+            mv -f @siglist @pkglist $db_root
+          }
+        } elif (len(siglist) > 0)  {
+          mv -f @siglist $db_root
+        }
+
+        # allow repo-add even if nothing was built, for leftover packages
+        var sign_p = ['-s'] if args.sign else []
+        ... env
+            -C $db_root
+            LANG=C
+            repo-add
+            @sign_p
+            --wait-for-lock
+            $db_path
+            @pkglist
+      }
     }
   }
 }
