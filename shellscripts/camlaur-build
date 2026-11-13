@@ -245,24 +245,51 @@ proc main {
 
       if (create) {
         PKGDEST="$var_tmp" Chroot build (directory, bindmounts, makepkg_args=['--holdver'])
-        ## TODO for now we don't sign so we don't have to ignore sig files
         cd $var_tmp {
-          setvar pkglist = glob("*")
+          setvar pkglist = []
+          for p in (glob('*')) {
+            if (not p.endsWith('.sig')) {
+              call pkglist->append(p)
+            }
+          }
           if (len(pkglist) === 0) {
             echo >&2 "$progname: build of $q produced no packages in $var_tmp"
             exit 2
           }
-          # pkglist is now bare filenames not full paths but
-          # repo-add will work because it goes in $db_root
-          mv -f -- @pkglist $db_root
         }
       } else {
         echo >&2 "$progname: warning: skipping existing packages (use -f to overwrite)"
         printf >&2 '%q\n' @exist
       }
 
+      var siglist = []
+      for p in (pkglist) {
+        # already bare if create was true but otherwise need to strip
+        var pbase = p.split('/')[-1]
+
+        # signature from makepkg --sign
+        if test -f $pbase.sig {
+          call siglist->append("$pbase.sig")
+        # Skipped package build with signature
+        } elif test -f $db_root/$pbase.sig && ! test -f $pbase {
+          printf >&2 '%s: existing signature file %q\n' $progname $db_root/$pbase.sig
+        } elif (args.sign) {
+          ... gpg
+              --detach-sign
+              --no-armor
+              --batch
+              --output $pbase.sig
+              $p
+              ;
+          printf >&2 '%s: created signature file %q\n' $progname $pbase.sig
+          call siglist->append("$pbase.sig")
+        }
+      }
+
+      mv -f -- @pkglist $db_root
       # allow repo-add even if nothing was built, for leftover packages
-      env -C $db_root LANG=C repo-add --wait-for-lock  $db_path @pkglist
+      var sign_p = '-s' if args.sign else ''
+      env -C $db_root LANG=C repo-add $sign_p --wait-for-lock  $db_path @pkglist
     }
   }
 }
