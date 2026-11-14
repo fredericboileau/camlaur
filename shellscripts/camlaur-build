@@ -79,6 +79,36 @@ proc list_packages(; db_root, makepkg_conf, pkglist_out, exist_out) {
   call exist_out->setValue(exist)
 }
 
+proc find_gpg_key (; conf, out) {
+  var gpg_key
+  if ('GPGKEY' in first(ENV)) {
+    setvar gpg_key = ENV.GPGKEY
+  } else {
+    var gpg_retrieve = '''
+      source /usr/share/makepkg/util/config.sh
+      load_makepkg_config "$1"
+      printf "%s" "$GPGKEY"
+    '''
+    setvar gpg_key = $(bash -c $gpg_retrieve _ $[conf['makepkg.conf']])
+  }
+  if (gpg_key === '') {
+    if ! gpg --batch --detach-sign --output /dev/null <<< 'test' {
+      echo >&2 "$progname: --sign requested but no signing key available"
+      exit 2
+    }
+    echo >&2 "$progname: no GPGKEY set in env or makepkg.conf, will use default signing key"
+  } else {
+    try {
+      gpg >&2 --list-keys $gpg_key
+    }
+    if failed {
+      echo >&2 "$progname: coudldnt find gpgkey: $gpg_key"
+      exit 2
+    }
+  }
+  call out->setValue(gpg_key)
+}
+
 proc main {
   parser (&spec) {
     flag -a --arg-file (Str, default='')
@@ -181,17 +211,21 @@ proc main {
       echo >&2 "$progname: Couldn't resolve path for $[args.pool]"
       exit 2
     }
-  }
-  if ! test -w $db_pool {
-    echo >&2 "$progname: db_pool=$db_pool permission denied"
+    if ! test -w $db_pool {
+      echo >&2 "$progname: db_pool=$db_pool permission denied"
+      exit 13
     }
+  }
 
+  var gpg_key = ''
   if (not args.sign) {
     var db_sig = "$db_root/$db_name.db.sig"
     if test -f $db_sig {
       echo >&2 "$progname: $db_sig: database signature found, but signing is disabled"
       exit 1
     }
+  } else {
+    find_gpg_key (conf, &gpg_key)
   }
 
   # Always build in a chroot
@@ -219,6 +253,8 @@ proc main {
     setvar queue = [startdir]
   }
 
+  var sign_p = ['-s'] if args.sign else []
+  var gpg_args = ['-u', gpg_key] if gpg_key !== '' else []
   for q in (queue) {
     if (q === '') {
       echo >&2 "$progname: Empty directory passed in --arg-file"
@@ -255,9 +291,7 @@ proc main {
       var create = args.force or partial or fresh
 
       if (create) {
-
         PKGDEST="$var_tmp" Chroot build (directory, bindmounts, makepkg_args=['--holdver'])
-
         cd $var_tmp {
           setvar pkglist = []
           for p in (glob('*')) {
@@ -274,13 +308,11 @@ proc main {
         echo >&2 "$progname: warning: skipping existing packages (use -f to overwrite)"
         printf >&2 '%q\n' @exist
       }
-
       cd $var_tmp {
         var siglist = []
         for p in (pkglist) {
           # already bare if create was true but otherwise need to strip
           var pbase = barename(p)
-
           # signature from makepkg --sign
           if test -f $pbase.sig {
             call siglist->append("$pbase.sig")
@@ -289,6 +321,7 @@ proc main {
             printf >&2 '%s: existing signature file %q\n' $progname $db_root/$pbase.sig
           } elif (args.sign) {
             ... gpg
+                @gpg_args
                 --detach-sign
                 --no-armor
                 --batch
@@ -299,15 +332,13 @@ proc main {
             call siglist->append("$pbase.sig")
           }
         }
-
-
         if (create) {
           # pkglist/siglist contain basename
           if (db_pool !== '' and db_root !== db_pool) {
             mv -f @siglist @pkglist $db_pool
             var targets = []
             for t in (pkglist ++ siglist) {
-              call targets->append("$dbpool/$t")
+              call targets->append("$db_pool/$t")
             }
             # absolute symlinks
             ln -t $db_root -sf -- @targets
@@ -317,9 +348,7 @@ proc main {
         } elif (len(siglist) > 0)  {
           mv -f @siglist $db_root
         }
-
         # allow repo-add even if nothing was built, for leftover packages
-        var sign_p = ['-s'] if args.sign else []
         ... env
             -C $db_root
             LANG=C
